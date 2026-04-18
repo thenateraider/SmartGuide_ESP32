@@ -1,11 +1,5 @@
+
 # Smart Guide Patient Navigation System
-
-An ESP32-S3 based patient navigation system for hospitals using BLE RSSI, NFC, a registration web UI, LVGL screen pages, and SD-card audio guidance.  
-ระบบนำทางผู้ป่วยภายในโรงพยาบาลด้วย ESP32-S3, BLE RSSI, NFC, Web UI, LVGL display และระบบเสียงจาก SD Card
-
----
-
-## English
 
 ### Project Overview
 
@@ -238,7 +232,7 @@ The `/ear` folder is used for route `m1`, and `/phy` is used for route `m2`.
 
 ---
 
-## ภาษาไทย
+## อุปกรณ์นำทางผู้ป่วยอัจฉริยะในโรงพยาบาล
 
 ### ภาพรวมโครงการ
 
