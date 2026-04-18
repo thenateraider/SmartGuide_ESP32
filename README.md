@@ -1,184 +1,7 @@
 # Smart Guide Patient Navigation System
 
-ระบบนำทางผู้ป่วยภายในโรงพยาบาลด้วย ESP32-S3, BLE RSSI, NFC, Web UI, LVGL display และระบบเสียงจาก SD Card  
-An ESP32-S3 based patient navigation system for hospitals using BLE RSSI, NFC, a registration web UI, LVGL screen pages, and SD-card audio guidance.
-
----
-
-## ภาษาไทย
-
-### ภาพรวมโครงการ
-
-Smart Guide เป็นระบบต้นแบบสำหรับช่วยนำทางผู้ป่วยในโรงพยาบาล โดยให้ผู้ป่วยพกอุปกรณ์ MobileWalk และเดินผ่านสถานีต่าง ๆ ตั้งแต่ลงทะเบียน คัดกรอง พบแพทย์ ชำระเงิน และรับยา ระบบใช้ Station 1 เป็นศูนย์กลางเก็บสถานะปัจจุบันของผู้ป่วย ส่วน Station 2-5 จะอัปเดตสถานะกลับไปที่ Station 1 เมื่อผู้ป่วยแตะ NFC หรือกดปุ่มยืนยัน
-
-อุปกรณ์ MobileWalk จะอ่านสถานะจาก Station 1 ผ่าน HTTP, เปลี่ยนหน้าจอตามขั้นตอน, สแกน BLE beacon ของสถานีปลายทางเพื่อประเมินระยะจาก RSSI และเล่นไฟล์เสียงแนะนำเมื่อผู้ป่วยเข้าใกล้จุดบริการ
-
-### สิ่งที่ระบบทำได้
-
-- ลงทะเบียนผู้ป่วยผ่านเว็บ `http://station1.local`
-- สร้างรหัสผู้ป่วยแบบ `PT0001`, `PT0002`, ...
-- เลือกเส้นทางการรักษาได้ 2 แผนก: `m1` และ `m2`
-- อัปเดตขั้นตอนผู้ป่วยแบบ real-time ผ่าน HTTP API
-- ใช้ BLE RSSI เพื่อแสดงระยะโดยประมาณบนอุปกรณ์ MobileWalk
-- เล่นเสียงนำทางจาก SD Card ตามแผนกและขั้นตอน
-- ใช้ NFC เพื่อยืนยันการมาถึง/ออกจากจุดบริการ
-- ใช้ปุ่มกดที่ Station4 และ Station5 เพื่อยืนยันชำระเงิน/รับยา
-
-### อุปกรณ์ในระบบ
-
-| อุปกรณ์ | หน้าที่ | วิธีรับ input | ชื่อ BLE / Host |
-| --- | --- | --- | --- |
-| Station1 | จุดลงทะเบียนและ server สถานะกลาง | Web UI + NFC | `station1.local` |
-| Station2 | จุดคัดกรอง | NFC | `Station2_Filter`, `station2.local` |
-| Station3 | ห้องตรวจ | NFC | `Station3_Doctor`, `station3.local` |
-| Station4 | จุดชำระเงิน | Button | `Station4_Payment`, `station4.local` |
-| Station5 | จุดรับยา | Button | `Station5_Pharmacy`, `station5.local` |
-| MobileWalk | อุปกรณ์ผู้ป่วย | BLE scan + display + audio + button | `MobileWalk` |
-
-### การทำงานแบบ End-to-End
-
-1. เปิด WiFi ชื่อ `SmartGuide` รหัส `88888888`
-2. เปิด Station 1-5 ให้เชื่อมต่อ WiFi เดียวกัน
-3. Station1 เปิดเว็บลงทะเบียนและ API กลางที่ `http://station1.local`
-4. Station2-5 เริ่มส่ง BLE beacon ตามชื่อของแต่ละสถานี
-5. เปิด MobileWalk แล้วรอเสียงต้อนรับจบ
-6. ผู้ดูแลเข้าเว็บ Station1, ใส่ชื่อผู้ป่วย, เลือกแผนก และแตะ NFC
-7. Station1 บันทึกผู้ป่วยและเปลี่ยนสถานะเป็น `STEP_TO_FILTER`
-8. MobileWalk ดึง `/status` จาก Station1 ทุก 1 วินาที
-9. เมื่อสถานะเปลี่ยน MobileWalk จะเปลี่ยนหน้าจอและเล่นเสียงตาม flow
-10. เมื่อ MobileWalk ต้องนำทางไปสถานีถัดไป จะสแกน BLE beacon ของสถานีนั้นและแสดงระยะโดยประมาณ
-11. เมื่อผู้ป่วยถึง Station2 หรือ Station3 ให้แตะ NFC เพื่ออัปเดต step
-12. เมื่อถึง Station4 หรือ Station5 ให้กดปุ่มที่สถานีเพื่ออัปเดต step
-13. เมื่อ flow จบ MobileWalk จะกลับไปหน้าให้ลงทะเบียนผู้ป่วยใหม่
-
-### เส้นทางการรักษา
-
-| Code | แผนก | Flow |
-| --- | --- | --- |
-| `m1` | คลินิกหู คอ จมูก | ลงทะเบียน -> คัดกรอง -> ห้องตรวจ -> ชำระเงิน -> รับยา -> จบ |
-| `m2` | คลินิกกายภาพบำบัด | ลงทะเบียน -> คัดกรอง -> ห้องตรวจ -> ชำระเงิน -> จบ |
-
-### ตาราง Step
-
-| Step | ชื่อในโค้ด | ความหมาย |
-| --- | --- | --- |
-| 0 | `STEP_INITIAL` | ยังไม่มีผู้ป่วยลงทะเบียน |
-| 1 | `STEP_TO_FILTER` | ลงทะเบียนแล้ว กำลังเดินทางไปจุดคัดกรอง |
-| 2 | `STEP_FILTERING` | อยู่ที่จุดคัดกรอง / กำลังคัดกรอง |
-| 3 | `STEP_TO_DOCTOR` | คัดกรองเสร็จแล้ว กำลังไปห้องตรวจ |
-| 4 | `STEP_WITH_DOCTOR` | ถึงห้องตรวจ / กำลังพบแพทย์ |
-| 5 | `STEP_TO_PAYMENT` | พบแพทย์เสร็จแล้ว กำลังไปชำระเงิน |
-| 6 | `STEP_TO_PHARMACY` | ชำระเงินแล้ว กำลังไปรับยา หรือจบ flow สำหรับ `m2` บน Mobile |
-| 7 | `STEP_DONE` / `STEP_FINISH_GET_PILL` | รับยาแล้ว / จบ flow สำหรับ `m1` |
-| 8 | `STEP_WAITNFC` | ลงทะเบียนผ่านเว็บแล้ว รอแตะ NFC |
-| 9 | `STEP_DONE_PHY` | ชำระเงินและคืนอุปกรณ์แล้วสำหรับกายภาพบำบัด |
-| 10 | `STEP_PAYFINISH` | สถานะจ่ายเงินเรียบร้อยที่มีไว้รองรับ flow เพิ่มเติม |
-| 11 | `STEP_FINISHGETPILL` | รับยาแล้วที่มีไว้รองรับ flow เพิ่มเติม |
-
-### API หลักของ Station1
-
-| Endpoint | ใช้โดย | รายละเอียด |
-| --- | --- | --- |
-| `GET /` | Browser | หน้าเว็บลงทะเบียนและแสดงสถานะผู้ป่วย |
-| `POST /register` | Browser | รับชื่อและแผนก จากนั้นเปลี่ยนเป็นสถานะรอ NFC |
-| `GET /status` | MobileWalk, Station2-5 | คืนค่า JSON เช่น `step`, `dept`, `uid`, `name` |
-| `GET /setstep?value=<step>` | Station2-5 | เปลี่ยนสถานะกลางของผู้ป่วย |
-| `POST /clear` | Browser | ล้างข้อมูลผู้ป่วยทั้งหมด |
-
-### โครงสร้างโฟลเดอร์
-
-```text
-SmartParcelESP32/
-├── ArduinoCode/
-│   ├── Mobile/
-│   │   └── MobileWalk/
-│   │       ├── MobileWalk.ino          # setup/loop หลักของอุปกรณ์ผู้ป่วย
-│   │       ├── MobileConfig.h          # ค่า WiFi, endpoint, pin
-│   │       ├── FlowController.*        # flow หน้าจอและเสียงตาม step/dept
-│   │       ├── NavigationScan.*        # BLE scan และคำนวณระยะจาก RSSI
-│   │       ├── AudioQueue.*            # queue เล่น MP3 ตามลำดับ
-│   │       ├── StationClient.*         # WiFi + HTTP /status จาก Station1
-│   │       ├── DriverManager.*         # task battery/power
-│   │       └── ไดรเวอร์จอ/เสียง/SD/LVGL เดิม
-│   ├── Station1/
-│   │   ├── Station1.ino                # Web UI ลงทะเบียนและ API กลาง
-│   │   ├── StationConfig.h             # pins, WiFi, enum step
-│   │   └── StationNetwork.*            # WiFi + mDNS
-│   ├── Station2/                       # จุดคัดกรอง: NFC + BLE beacon
-│   ├── Station3/                       # ห้องตรวจ: NFC + BLE beacon
-│   ├── Station4/                       # ชำระเงิน: button + BLE beacon
-│   └── Station5/                       # รับยา: button + BLE beacon
-├── docs/
-│   ├── PROJECT_OVERVIEW.md
-│   └── DEPENDENCIES.md
-├── scripts/
-│   └── install_arduino_deps.sh
-└── หลักการทำงานโปรเจกต์SmartGuide.docx
-```
-
-### Dependencies
-
-ต้องติดตั้ง:
-
-- Arduino IDE 2.x หรือ Arduino CLI
-- ESP32 board package จาก Espressif
-- ArduinoJson
-- Adafruit PN532
-- Adafruit BusIO
-- LVGL
-- ESP32-audioI2S หรือไลบรารีที่มี `Audio.h` และเข้ากับ `Audio_PCM5101`
-
-ติดตั้งผ่าน Arduino CLI:
-
-```bash
-./scripts/install_arduino_deps.sh
-```
-
-รายละเอียดเพิ่มเติมอยู่ที่ [docs/DEPENDENCIES.md](docs/DEPENDENCIES.md)
-
-### ลำดับการอัปโหลด Firmware
-
-แนะนำให้อัปโหลดตามลำดับนี้:
-
-1. `ArduinoCode/Station1/Station1.ino`
-2. `ArduinoCode/Station2/Station2.ino`
-3. `ArduinoCode/Station3/Station3.ino`
-4. `ArduinoCode/Station4/Station4.ino`
-5. `ArduinoCode/Station5/Station5.ino`
-6. `ArduinoCode/Mobile/MobileWalk/MobileWalk.ino`
-
-หลังอัปโหลด ให้เปิด Serial Monitor ที่ `115200` baud เพื่อตรวจว่า WiFi, mDNS, BLE, NFC และ SD/audio เริ่มทำงานถูกต้อง
-
-### ไฟล์เสียงบน SD Card
-
-MobileWalk เล่นเสียงจาก path เดิมใน SD Card เช่น:
-
-- `/voice/welcome.mp3`
-- `/voice/pleasrg.mp3`
-- `/ear/1.mp3` ถึง `/ear/17.mp3`
-- `/phy/1.mp3` ถึง `/phy/17.mp3`
-
-โฟลเดอร์ `/ear` ใช้กับเส้นทาง `m1` และ `/phy` ใช้กับเส้นทาง `m2`
-
-### การใช้งานจริงโดยย่อ
-
-1. เปิด hotspot/router เป็นชื่อ `SmartGuide` และรหัส `88888888`
-2. เปิด Station ทุกตัวก่อน แล้วรอให้เชื่อม WiFi สำเร็จ
-3. เปิด MobileWalk ด้วยปุ่มเล็กใต้ช่อง SD Card
-4. ใช้มือถือหรือแท็บเล็ตเข้า `http://station1.local`
-5. ถ้า Android เข้า hostname ไม่ได้ ให้ดู IP จาก Serial Monitor ของ Station1 แล้วเข้า URL ด้วย IP แทน
-6. ลงทะเบียนชื่อผู้ป่วย เลือกแผนก และแตะ NFC ที่ Station1
-7. ให้ผู้ป่วยถือ MobileWalk และเดินตามเสียง/หน้าจอ
-
-### Troubleshooting
-
-| ปัญหา | แนวทางตรวจสอบ |
-| --- | --- |
-| เข้า `station1.local` ไม่ได้ | ตรวจ WiFi ว่าอยู่ network เดียวกัน, ลองใช้ Safari/iOS, หรือใช้ IP จาก Serial Monitor |
-| Mobile ไม่เปลี่ยนหน้า | ตรวจว่า Station1 ตอบ `/status`, WiFi ชื่อ/รหัสตรง, mDNS ใช้งานได้ |
-| ไม่ได้ยินเสียง | ตรวจ SD Card, path ไฟล์เสียง, ลำโพง/I2S, และไลบรารี `Audio.h` |
-| NFC อ่านไม่ได้ | ตรวจสาย SDA/SCL, ไฟเลี้ยง PN532, และ Serial Monitor |
-| ระยะ BLE ไม่นิ่ง | RSSI แกว่งตามสภาพแวดล้อม ให้ใช้เป็นระยะโดยประมาณ ไม่ใช่ระยะจริงระดับเซนติเมตร |
+An ESP32-S3 based patient navigation system for hospitals using BLE RSSI, NFC, a registration web UI, LVGL screen pages, and SD-card audio guidance.  
+ระบบนำทางผู้ป่วยภายในโรงพยาบาลด้วย ESP32-S3, BLE RSSI, NFC, Web UI, LVGL display และระบบเสียงจาก SD Card
 
 ---
 
@@ -200,6 +23,62 @@ The MobileWalk device polls Station1 over HTTP, changes LVGL pages according to 
 - SD-card MP3 voice guidance by department and step
 - NFC confirmation at Station2 and Station3
 - Button confirmation at Station4 and Station5
+
+### Working Principle and Theory
+
+The system combines a central state machine, short-range identity confirmation, wireless proximity estimation, and audio/display feedback.
+
+1. Central state machine  
+   Station1 stores the current patient state as a numeric step. MobileWalk and Station2-5 do not keep the authoritative workflow state by themselves. Instead, every device reads from or writes to Station1. This keeps the patient journey synchronized.
+
+2. HTTP communication  
+   MobileWalk periodically calls `GET /status` on Station1. Station2-5 call `GET /setstep?value=<step>` when a valid NFC tap or button press occurs. This makes Station1 the single source of truth for `step`, `dept`, `uid`, and `name`.
+
+3. NFC identity and event confirmation  
+   NFC is used as a physical confirmation action. At Station1, an NFC tap pairs the patient with an ID. At Station2 and Station3, NFC taps confirm that the patient has arrived at or left a service point.
+
+4. BLE beacon proximity  
+   Station2-5 advertise BLE names such as `Station2_Filter` or `Station3_Doctor`. MobileWalk scans for the target station name and reads RSSI. RSSI is not an exact distance measurement, but it is useful for indoor approximate guidance.
+
+5. Display and audio feedback  
+   When `step` or `dept` changes, MobileWalk changes the LVGL page and queues the matching MP3 files. Audio is handled as a queue so one instruction can finish before the next begins.
+
+### RSSI Distance Formula
+
+MobileWalk estimates distance from BLE RSSI using the function in `NavigationScan.cpp`:
+
+```cpp
+float estimateDistance(int rssi, int txPower = -69) {
+  if (rssi == 0) return -1.0;
+
+  float ratio = rssi * 1.0 / txPower;
+  if (ratio < 1.0) {
+    return pow(ratio, 10);
+  }
+
+  return 0.89976 * pow(ratio, 7.7095) + 0.111;
+}
+```
+
+Formula form:
+
+```text
+ratio = RSSI / TxPower
+
+if ratio < 1:
+    distance = ratio^10
+else:
+    distance = 0.89976 * ratio^7.7095 + 0.111
+```
+
+Where:
+
+- `RSSI` is the received BLE signal strength in dBm
+- `TxPower` is the expected RSSI at approximately 1 meter, currently set to `-69`
+- `distance` is an approximate distance in meters
+- Stronger signal means RSSI is closer to zero, usually indicating a shorter distance
+
+Important note: BLE RSSI is affected by walls, people, antenna direction, power supply, and interference. The value should be treated as approximate guidance, not precision indoor positioning.
 
 ### System Devices
 
@@ -356,6 +235,239 @@ The `/ear` folder is used for route `m1`, and `/phy` is used for route `m2`.
 | No audio | Check SD card, audio file paths, I2S wiring, speaker, and `Audio.h` library |
 | NFC does not read | Check PN532 wiring, SDA/SCL pins, power, and Serial Monitor logs |
 | BLE distance is unstable | RSSI is environment-dependent and should be treated as an approximate distance only |
+
+---
+
+## ภาษาไทย
+
+### ภาพรวมโครงการ
+
+Smart Guide เป็นระบบต้นแบบสำหรับช่วยนำทางผู้ป่วยในโรงพยาบาล โดยให้ผู้ป่วยพกอุปกรณ์ MobileWalk และเดินผ่านสถานีต่าง ๆ ตั้งแต่ลงทะเบียน คัดกรอง พบแพทย์ ชำระเงิน และรับยา ระบบใช้ Station 1 เป็นศูนย์กลางเก็บสถานะปัจจุบันของผู้ป่วย ส่วน Station 2-5 จะอัปเดตสถานะกลับไปที่ Station 1 เมื่อผู้ป่วยแตะ NFC หรือกดปุ่มยืนยัน
+
+อุปกรณ์ MobileWalk จะอ่านสถานะจาก Station 1 ผ่าน HTTP, เปลี่ยนหน้าจอตามขั้นตอน, สแกน BLE beacon ของสถานีปลายทางเพื่อประเมินระยะจาก RSSI และเล่นไฟล์เสียงแนะนำเมื่อผู้ป่วยเข้าใกล้จุดบริการ
+
+### สิ่งที่ระบบทำได้
+
+- ลงทะเบียนผู้ป่วยผ่านเว็บ `http://station1.local`
+- สร้างรหัสผู้ป่วยแบบ `PT0001`, `PT0002`, ...
+- เลือกเส้นทางการรักษาได้ 2 แผนก: `m1` และ `m2`
+- อัปเดตขั้นตอนผู้ป่วยแบบ real-time ผ่าน HTTP API
+- ใช้ BLE RSSI เพื่อแสดงระยะโดยประมาณบนอุปกรณ์ MobileWalk
+- เล่นเสียงนำทางจาก SD Card ตามแผนกและขั้นตอน
+- ใช้ NFC เพื่อยืนยันการมาถึง/ออกจากจุดบริการ
+- ใช้ปุ่มกดที่ Station4 และ Station5 เพื่อยืนยันชำระเงิน/รับยา
+
+### ทฤษฎีและหลักการทำงาน
+
+ระบบนี้รวมแนวคิดหลัก 4 ส่วน ได้แก่ state machine กลาง, การยืนยันตัวตนด้วย NFC, การประมาณระยะด้วย BLE RSSI และการตอบสนองผู้ใช้ด้วยจอ/เสียง
+
+1. State machine กลาง  
+   Station1 เก็บสถานะปัจจุบันของผู้ป่วยเป็นตัวเลข `step` อุปกรณ์อื่นไม่ถือสถานะหลักเอง แต่จะอ่านหรือส่งคำสั่งอัปเดตไปที่ Station1 ทำให้ทุกอุปกรณ์เห็น flow เดียวกัน
+
+2. การสื่อสารผ่าน HTTP  
+   MobileWalk เรียก `GET /status` จาก Station1 เป็นระยะ ส่วน Station2-5 เรียก `GET /setstep?value=<step>` เมื่อเกิด event ที่ถูกต้อง เช่น แตะ NFC หรือกดปุ่ม
+
+3. NFC สำหรับยืนยันเหตุการณ์  
+   Station1 ใช้ NFC เพื่อผูกผู้ป่วยกับรหัสผู้ป่วย ส่วน Station2 และ Station3 ใช้ NFC เพื่อยืนยันว่าผู้ป่วยถึงจุดบริการหรือออกจากจุดบริการแล้ว
+
+4. BLE beacon สำหรับประมาณระยะ  
+   Station2-5 ส่ง BLE beacon ด้วยชื่อ เช่น `Station2_Filter` หรือ `Station3_Doctor` MobileWalk จะสแกนหา beacon ของสถานีเป้าหมาย อ่านค่า RSSI แล้วแปลงเป็นระยะโดยประมาณ
+
+5. จอแสดงผลและระบบเสียง  
+   เมื่อ `step` หรือ `dept` เปลี่ยน MobileWalk จะเปลี่ยนหน้า LVGL และเพิ่มไฟล์ MP3 เข้า queue เพื่อเล่นเสียงตามลำดับ ทำให้เสียงแต่ละช่วงไม่ทับกัน
+
+### สูตรคำนวณระยะจาก RSSI
+
+MobileWalk ใช้สูตรจากฟังก์ชัน `estimateDistance()` ใน `NavigationScan.cpp`:
+
+```cpp
+float estimateDistance(int rssi, int txPower = -69) {
+  if (rssi == 0) return -1.0;
+
+  float ratio = rssi * 1.0 / txPower;
+  if (ratio < 1.0) {
+    return pow(ratio, 10);
+  }
+
+  return 0.89976 * pow(ratio, 7.7095) + 0.111;
+}
+```
+
+เขียนเป็นสมการได้ดังนี้:
+
+```text
+ratio = RSSI / TxPower
+
+ถ้า ratio < 1:
+    distance = ratio^10
+ถ้า ratio >= 1:
+    distance = 0.89976 * ratio^7.7095 + 0.111
+```
+
+ความหมายของตัวแปร:
+
+- `RSSI` คือค่าความแรงสัญญาณ BLE ที่รับได้ หน่วย dBm
+- `TxPower` คือค่า RSSI อ้างอิงที่ระยะประมาณ 1 เมตร ในโค้ดตั้งไว้ที่ `-69`
+- `distance` คือระยะโดยประมาณ หน่วยเมตร
+- ถ้าสัญญาณแรงขึ้น ค่า RSSI จะเข้าใกล้ศูนย์มากขึ้น โดยทั่วไปหมายถึงอยู่ใกล้ขึ้น
+
+หมายเหตุ: ค่า BLE RSSI แกว่งได้จากผนัง คนเดินผ่าน ทิศทางเสาอากาศ แหล่งจ่ายไฟ และสัญญาณรบกวน จึงควรใช้เป็นค่าประมาณเพื่อบอกทิศทาง ไม่ใช่การวัดระยะละเอียดระดับเซนติเมตร
+
+### อุปกรณ์ในระบบ
+
+| อุปกรณ์ | หน้าที่ | วิธีรับ input | ชื่อ BLE / Host |
+| --- | --- | --- | --- |
+| Station1 | จุดลงทะเบียนและ server สถานะกลาง | Web UI + NFC | `station1.local` |
+| Station2 | จุดคัดกรอง | NFC | `Station2_Filter`, `station2.local` |
+| Station3 | ห้องตรวจ | NFC | `Station3_Doctor`, `station3.local` |
+| Station4 | จุดชำระเงิน | Button | `Station4_Payment`, `station4.local` |
+| Station5 | จุดรับยา | Button | `Station5_Pharmacy`, `station5.local` |
+| MobileWalk | อุปกรณ์ผู้ป่วย | BLE scan + display + audio + button | `MobileWalk` |
+
+### การทำงานแบบ End-to-End
+
+1. เปิด WiFi ชื่อ `SmartGuide` รหัส `88888888`
+2. เปิด Station 1-5 ให้เชื่อมต่อ WiFi เดียวกัน
+3. Station1 เปิดเว็บลงทะเบียนและ API กลางที่ `http://station1.local`
+4. Station2-5 เริ่มส่ง BLE beacon ตามชื่อของแต่ละสถานี
+5. เปิด MobileWalk แล้วรอเสียงต้อนรับจบ
+6. ผู้ดูแลเข้าเว็บ Station1, ใส่ชื่อผู้ป่วย, เลือกแผนก และแตะ NFC
+7. Station1 บันทึกผู้ป่วยและเปลี่ยนสถานะเป็น `STEP_TO_FILTER`
+8. MobileWalk ดึง `/status` จาก Station1 ทุก 1 วินาที
+9. เมื่อสถานะเปลี่ยน MobileWalk จะเปลี่ยนหน้าจอและเล่นเสียงตาม flow
+10. เมื่อ MobileWalk ต้องนำทางไปสถานีถัดไป จะสแกน BLE beacon ของสถานีนั้นและแสดงระยะโดยประมาณ
+11. เมื่อผู้ป่วยถึง Station2 หรือ Station3 ให้แตะ NFC เพื่ออัปเดต step
+12. เมื่อถึง Station4 หรือ Station5 ให้กดปุ่มที่สถานีเพื่ออัปเดต step
+13. เมื่อ flow จบ MobileWalk จะกลับไปหน้าให้ลงทะเบียนผู้ป่วยใหม่
+
+### เส้นทางการรักษา
+
+| Code | แผนก | Flow |
+| --- | --- | --- |
+| `m1` | คลินิกหู คอ จมูก | ลงทะเบียน -> คัดกรอง -> ห้องตรวจ -> ชำระเงิน -> รับยา -> จบ |
+| `m2` | คลินิกกายภาพบำบัด | ลงทะเบียน -> คัดกรอง -> ห้องตรวจ -> ชำระเงิน -> จบ |
+
+### ตาราง Step
+
+| Step | ชื่อในโค้ด | ความหมาย |
+| --- | --- | --- |
+| 0 | `STEP_INITIAL` | ยังไม่มีผู้ป่วยลงทะเบียน |
+| 1 | `STEP_TO_FILTER` | ลงทะเบียนแล้ว กำลังเดินทางไปจุดคัดกรอง |
+| 2 | `STEP_FILTERING` | อยู่ที่จุดคัดกรอง / กำลังคัดกรอง |
+| 3 | `STEP_TO_DOCTOR` | คัดกรองเสร็จแล้ว กำลังไปห้องตรวจ |
+| 4 | `STEP_WITH_DOCTOR` | ถึงห้องตรวจ / กำลังพบแพทย์ |
+| 5 | `STEP_TO_PAYMENT` | พบแพทย์เสร็จแล้ว กำลังไปชำระเงิน |
+| 6 | `STEP_TO_PHARMACY` | ชำระเงินแล้ว กำลังไปรับยา หรือจบ flow สำหรับ `m2` บน Mobile |
+| 7 | `STEP_DONE` / `STEP_FINISH_GET_PILL` | รับยาแล้ว / จบ flow สำหรับ `m1` |
+| 8 | `STEP_WAITNFC` | ลงทะเบียนผ่านเว็บแล้ว รอแตะ NFC |
+| 9 | `STEP_DONE_PHY` | ชำระเงินและคืนอุปกรณ์แล้วสำหรับกายภาพบำบัด |
+| 10 | `STEP_PAYFINISH` | สถานะจ่ายเงินเรียบร้อยที่มีไว้รองรับ flow เพิ่มเติม |
+| 11 | `STEP_FINISHGETPILL` | รับยาแล้วที่มีไว้รองรับ flow เพิ่มเติม |
+
+### API หลักของ Station1
+
+| Endpoint | ใช้โดย | รายละเอียด |
+| --- | --- | --- |
+| `GET /` | Browser | หน้าเว็บลงทะเบียนและแสดงสถานะผู้ป่วย |
+| `POST /register` | Browser | รับชื่อและแผนก จากนั้นเปลี่ยนเป็นสถานะรอ NFC |
+| `GET /status` | MobileWalk, Station2-5 | คืนค่า JSON เช่น `step`, `dept`, `uid`, `name` |
+| `GET /setstep?value=<step>` | Station2-5 | เปลี่ยนสถานะกลางของผู้ป่วย |
+| `POST /clear` | Browser | ล้างข้อมูลผู้ป่วยทั้งหมด |
+
+### โครงสร้างโฟลเดอร์
+
+```text
+SmartParcelESP32/
+├── ArduinoCode/
+│   ├── Mobile/
+│   │   └── MobileWalk/
+│   │       ├── MobileWalk.ino          # setup/loop หลักของอุปกรณ์ผู้ป่วย
+│   │       ├── MobileConfig.h          # ค่า WiFi, endpoint, pin
+│   │       ├── FlowController.*        # flow หน้าจอและเสียงตาม step/dept
+│   │       ├── NavigationScan.*        # BLE scan และคำนวณระยะจาก RSSI
+│   │       ├── AudioQueue.*            # queue เล่น MP3 ตามลำดับ
+│   │       ├── StationClient.*         # WiFi + HTTP /status จาก Station1
+│   │       ├── DriverManager.*         # task battery/power
+│   │       └── ไดรเวอร์จอ/เสียง/SD/LVGL เดิม
+│   ├── Station1/
+│   │   ├── Station1.ino                # Web UI ลงทะเบียนและ API กลาง
+│   │   ├── StationConfig.h             # pins, WiFi, enum step
+│   │   └── StationNetwork.*            # WiFi + mDNS
+│   ├── Station2/                       # จุดคัดกรอง: NFC + BLE beacon
+│   ├── Station3/                       # ห้องตรวจ: NFC + BLE beacon
+│   ├── Station4/                       # ชำระเงิน: button + BLE beacon
+│   └── Station5/                       # รับยา: button + BLE beacon
+├── docs/
+│   ├── PROJECT_OVERVIEW.md
+│   └── DEPENDENCIES.md
+├── scripts/
+│   └── install_arduino_deps.sh
+└── หลักการทำงานโปรเจกต์SmartGuide.docx
+```
+
+### Dependencies
+
+ต้องติดตั้ง:
+
+- Arduino IDE 2.x หรือ Arduino CLI
+- ESP32 board package จาก Espressif
+- ArduinoJson
+- Adafruit PN532
+- Adafruit BusIO
+- LVGL
+- ESP32-audioI2S หรือไลบรารีที่มี `Audio.h` และเข้ากับ `Audio_PCM5101`
+
+ติดตั้งผ่าน Arduino CLI:
+
+```bash
+./scripts/install_arduino_deps.sh
+```
+
+รายละเอียดเพิ่มเติมอยู่ที่ [docs/DEPENDENCIES.md](docs/DEPENDENCIES.md)
+
+### ลำดับการอัปโหลด Firmware
+
+แนะนำให้อัปโหลดตามลำดับนี้:
+
+1. `ArduinoCode/Station1/Station1.ino`
+2. `ArduinoCode/Station2/Station2.ino`
+3. `ArduinoCode/Station3/Station3.ino`
+4. `ArduinoCode/Station4/Station4.ino`
+5. `ArduinoCode/Station5/Station5.ino`
+6. `ArduinoCode/Mobile/MobileWalk/MobileWalk.ino`
+
+หลังอัปโหลด ให้เปิด Serial Monitor ที่ `115200` baud เพื่อตรวจว่า WiFi, mDNS, BLE, NFC และ SD/audio เริ่มทำงานถูกต้อง
+
+### ไฟล์เสียงบน SD Card
+
+MobileWalk เล่นเสียงจาก path เดิมใน SD Card เช่น:
+
+- `/voice/welcome.mp3`
+- `/voice/pleasrg.mp3`
+- `/ear/1.mp3` ถึง `/ear/17.mp3`
+- `/phy/1.mp3` ถึง `/phy/17.mp3`
+
+โฟลเดอร์ `/ear` ใช้กับเส้นทาง `m1` และ `/phy` ใช้กับเส้นทาง `m2`
+
+### การใช้งานจริงโดยย่อ
+
+1. เปิด hotspot/router เป็นชื่อ `SmartGuide` และรหัส `88888888`
+2. เปิด Station ทุกตัวก่อน แล้วรอให้เชื่อม WiFi สำเร็จ
+3. เปิด MobileWalk ด้วยปุ่มเล็กใต้ช่อง SD Card
+4. ใช้มือถือหรือแท็บเล็ตเข้า `http://station1.local`
+5. ถ้า Android เข้า hostname ไม่ได้ ให้ดู IP จาก Serial Monitor ของ Station1 แล้วเข้า URL ด้วย IP แทน
+6. ลงทะเบียนชื่อผู้ป่วย เลือกแผนก และแตะ NFC ที่ Station1
+7. ให้ผู้ป่วยถือ MobileWalk และเดินตามเสียง/หน้าจอ
+
+### Troubleshooting
+
+| ปัญหา | แนวทางตรวจสอบ |
+| --- | --- |
+| เข้า `station1.local` ไม่ได้ | ตรวจ WiFi ว่าอยู่ network เดียวกัน, ลองใช้ Safari/iOS, หรือใช้ IP จาก Serial Monitor |
+| Mobile ไม่เปลี่ยนหน้า | ตรวจว่า Station1 ตอบ `/status`, WiFi ชื่อ/รหัสตรง, mDNS ใช้งานได้ |
+| ไม่ได้ยินเสียง | ตรวจ SD Card, path ไฟล์เสียง, ลำโพง/I2S, และไลบรารี `Audio.h` |
+| NFC อ่านไม่ได้ | ตรวจสาย SDA/SCL, ไฟเลี้ยง PN532, และ Serial Monitor |
+| ระยะ BLE ไม่นิ่ง | RSSI แกว่งตามสภาพแวดล้อม ให้ใช้เป็นระยะโดยประมาณ ไม่ใช่ระยะจริงระดับเซนติเมตร |
 
 ---
 
