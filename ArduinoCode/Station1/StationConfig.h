@@ -1,0 +1,26 @@
+#pragma once
+
+#define SDA_PIN 8
+#define SCL_PIN 9
+#define LED1_PIN 46
+#define LED2_PIN 21
+
+#define WIFI_SSID "SmartGuide"
+#define WIFI_PASS "88888888"
+#define MDNS_NAME "station1"
+
+enum RegistrationStep {
+  STEP_INITIAL = 0,
+  STEP_TO_FILTER,
+  STEP_FILTERING,
+  STEP_TO_DOCTOR,
+  STEP_WITH_DOCTOR,
+  STEP_TO_PAYMENT,
+  STEP_TO_PHARMACY,
+  STEP_DONE,
+  STEP_WAITNFC,
+  STEP_DONE_PHY,
+  STEP_PAYFINISH,
+  STEP_FINISHGETPILL
+};
+

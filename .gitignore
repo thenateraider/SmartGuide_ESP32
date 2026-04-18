@@ -1,0 +1,22 @@
+.DS_Store
+
+# Arduino build outputs
+build/
+build-*/
+*.bin
+*.elf
+*.map
+*.hex
+*.uf2
+
+# Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS/temp files
+Thumbs.db
+*.tmp
+*.log
+
